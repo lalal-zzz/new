@@ -41,7 +41,7 @@ def safe_join_markdown(md_list):
     def flush_buffer():
         nonlocal buffer, current_fmt
         if buffer:
-            joined = ''.join(buffer)  # ❗️合并时不加空格
+            joined = ''.join(buffer)  # 不加空格合并
             if current_fmt and current_fmt != 'plain':
                 result.append(wrap_format(joined, current_fmt))
             else:
@@ -49,7 +49,12 @@ def safe_join_markdown(md_list):
             buffer.clear()
 
     for md in md_list:
-        # HTML 或 link，直接拼接
+        # 特判删除：如果 strip 后为 【Q】或【A】，则跳过
+        clean_text = strip_format(md)
+        if clean_text in ('【Q】', '【A】'):
+            continue
+
+        # HTML 或超链接，直接原样拼接
         if is_html_wrapped(md) or is_markdown_link(md):
             flush_buffer()
             result.append(md)
@@ -57,13 +62,13 @@ def safe_join_markdown(md_list):
             continue
 
         fmt = get_format(md)
-        content = strip_format(md)
+        content = clean_text
 
         if fmt == current_fmt:
             buffer.append(content)
         else:
             flush_buffer()
-            # 如果格式冲突（如 bold → bold_italic），插入空格避免粘连
+            # 如果格式嵌套冲突（如 bold 后接 bold_italic），插入空格断开
             if result and current_fmt and fmt and (fmt.startswith(current_fmt) or current_fmt.startswith(fmt)):
                 result.append(' ')
             buffer.append(content)
