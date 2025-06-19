@@ -1,0 +1,101 @@
+import re
+
+def is_html_wrapped(text):
+    return bool(re.search(r'<[^>]+>', text))
+
+def is_markdown_link(text):
+    return bool(re.match(r'\[.+?\]\(.+?\)', text))
+
+def get_format(md_str):
+    if re.fullmatch(r"\*\*\*.+\*\*\*", md_str):
+        return 'bold_italic'
+    elif re.fullmatch(r"\*\*_.+_\*\*", md_str):
+        return 'bold_italic_alt'
+    elif re.fullmatch(r"\*\*.+\*\*", md_str):
+        return 'bold'
+    elif re.fullmatch(r"_+.+_+", md_str):
+        return 'italic'
+    else:
+        return 'plain'
+
+def strip_format(md_str):
+    return re.sub(r'^(\*\*\*|\*\*_|_\*\*|\*\*|_)|(\*\*\*|\*\*_|_\*\*|\*\*|_)$', '', md_str)
+
+def wrap_format(content, fmt):
+    if fmt == 'bold':
+        return f'**{content}**'
+    elif fmt == 'italic':
+        return f'_{content}_'
+    elif fmt == 'bold_italic':
+        return f'***{content}***'
+    elif fmt == 'bold_italic_alt':
+        return f'**_{content}_**'
+    else:
+        return content
+
+def safe_join_markdown(md_list):
+    result = []
+    buffer = []
+    current_fmt = None
+    i = 0
+    n = len(md_list)
+    disable_bold = False  # 🔴 一旦触发【Q】，就全局禁用粗体
+
+    def flush_buffer():
+        nonlocal buffer, current_fmt
+        if buffer:
+            joined = ''.join(buffer)
+            if current_fmt and current_fmt != 'plain' and not disable_bold:
+                result.append(wrap_format(joined, current_fmt))
+            else:
+                result.append(joined)
+            buffer.clear()
+
+    while i < n:
+        # 检查是否是 【Q】 的结构
+        if (
+            i + 2 < n and
+            strip_format(md_list[i]) == '【' and
+            strip_format(md_list[i + 1]) == 'Q' and
+            strip_format(md_list[i + 2]) == '】'
+        ):
+            flush_buffer()
+            result.append('【Q】')
+            disable_bold = True  # 🔴 全局关闭粗体
+            i += 3
+            continue
+
+        # HTML 或链接原样保留
+        if is_html_wrapped(md_list[i]) or is_markdown_link(md_list[i]):
+            flush_buffer()
+            result.append(md_list[i])
+            current_fmt = None
+            i += 1
+            continue
+
+        fmt = get_format(md_list[i])
+        content = strip_format(md_list[i])
+
+        # 全局禁用粗体时，强制降级为 plain 或 italic
+        if disable_bold and fmt.startswith('bold'):
+            if 'italic' in fmt:
+                flush_buffer()
+                result.append(f'_{content}_')  # 保留斜体
+            else:
+                flush_buffer()
+                result.append(content)  # 纯文本
+            current_fmt = None
+        else:
+            if fmt == current_fmt:
+                buffer.append(content)
+            else:
+                flush_buffer()
+                if result and current_fmt and fmt and (fmt.startswith(current_fmt) or current_fmt.startswith(fmt)):
+                    result.append(' ')
+                buffer.append(content)
+                current_fmt = fmt
+
+        i += 1
+
+    flush_buffer()
+    return ''.join(result)
