@@ -37,35 +37,45 @@ def safe_join_markdown(md_list):
     result = []
     buffer = []
     current_fmt = None
+    i = 0
+    n = len(md_list)
 
     def flush_buffer():
         nonlocal buffer, current_fmt
         if buffer:
-            joined = ''.join(buffer)  # 不加空格合并
+            joined = ''.join(buffer)
             if current_fmt and current_fmt != 'plain':
                 result.append(wrap_format(joined, current_fmt))
             else:
                 result.append(joined)
             buffer.clear()
 
-    for md in md_list:
-        # HTML 或 Markdown 链接直接保留
+    while i < n:
+        md = md_list[i]
+
+        # Step 1: 判断是否是组合成 【Q】或【A】
+        if (
+            i + 2 < n
+            and strip_format(md_list[i]) == '【'
+            and strip_format(md_list[i + 1]) in ('Q', 'A')
+            and strip_format(md_list[i + 2]) == '】'
+        ):
+            flush_buffer()
+            result.append(f'【{strip_format(md_list[i + 1])}】')
+            i += 3
+            continue
+
+        # Step 2: 特殊格式块直接保留
         if is_html_wrapped(md) or is_markdown_link(md):
             flush_buffer()
             result.append(md)
             current_fmt = None
+            i += 1
             continue
 
-        content = strip_format(md)
-
-        # 👇 特别处理：【Q】 / 【A】转为普通文本
-        if content in ('【Q】', '【A】'):
-            flush_buffer()
-            result.append(content)
-            current_fmt = None
-            continue
-
+        # Step 3: 普通 markdown 合并逻辑
         fmt = get_format(md)
+        content = strip_format(md)
 
         if fmt == current_fmt:
             buffer.append(content)
@@ -75,6 +85,8 @@ def safe_join_markdown(md_list):
                 result.append(' ')
             buffer.append(content)
             current_fmt = fmt
+
+        i += 1
 
     flush_buffer()
     return ''.join(result)
